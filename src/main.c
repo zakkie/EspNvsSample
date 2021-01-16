@@ -10,15 +10,12 @@
 
 static void print_value(const char *namespace, const char *key, nvs_type_t type) {
     nvs_handle_t nvs_handle;
-    uint8_t *buf = malloc(4097);  // MAX NVS Value length = 4096
-    size_t buf_len;
     esp_err_t err = nvs_open(namespace, NVS_READWRITE, &nvs_handle);
     if (err != ESP_OK) {
         printf("ERROR: nvs_open(%s): %s\n", namespace, esp_err_to_name(err));
         return;
     }
 
-    buf_len = 0;
     printf("namespace=%s key=%s ", namespace, key);
     switch (type) {
     case NVS_TYPE_U8: {
@@ -69,31 +66,40 @@ static void print_value(const char *namespace, const char *key, nvs_type_t type)
         printf("type=int64(0x%x) value=%" PRIi64 "\n", type, v);
         break;
     }
-    case NVS_TYPE_STR:
+    case NVS_TYPE_STR: {
+        uint8_t *buf = malloc(4097);  // MAX NVS Value length = 4096
+        size_t buf_len = 0;
         err = nvs_get_str(nvs_handle, key, (char *)buf, &buf_len);
         printf("type=str(0x%x) len=%d value=", type, buf_len);
         fwrite(buf, 1, buf_len, stdout);
         printf("\n");
+        free(buf);
         break;
-    case NVS_TYPE_BLOB:
+    }
+    case NVS_TYPE_BLOB: {
+        uint8_t *buf = malloc(4097);  // MAX NVS Value length = 4096
+        size_t buf_len = 0;
         err = nvs_get_blob(nvs_handle, key, buf, &buf_len);
         printf("type=blob(0x%x) value(hexdump)=", type);
         for (int i = 0; i < buf_len; i++) {
             printf("%02x", buf[i]);
         }
         printf("\n");
+        free(buf);
         break;
+    }
     default:
         printf("type=UNKNOWN(0x%x)\n", type);
         break;
     }
 
     nvs_close(nvs_handle);
-    free(buf);
 }
 
 void app_main(void) {
     esp_err_t err;
+    nvs_stats_t stats;
+    nvs_iterator_t it;
 
     // Initialize NVS
     err = nvs_flash_init();
@@ -104,8 +110,7 @@ void app_main(void) {
     ESP_ERROR_CHECK(err);
 
     printf("== NVS statistics ==\n");
-    nvs_stats_t stats;
-    err = nvs_get_stats("nvs", &stats);
+    err = nvs_get_stats("nvs", &stats);  // "nvs" is the default NVS partition label
     if (err != ESP_OK) {
         printf("failed to nvs_get_stats(): %s\n", esp_err_to_name(err));
         goto fail;
@@ -115,15 +120,13 @@ void app_main(void) {
     printf("== done ==\n");
 
     printf("== Dump all NVS key-value pairs==\n");
-    nvs_iterator_t it =
-        nvs_entry_find("nvs", NULL, NVS_TYPE_ANY);  // "nvs" is the default NVS partition label
+    it = nvs_entry_find("nvs", NULL, NVS_TYPE_ANY);
     while (it != NULL) {
         nvs_entry_info_t info;
         nvs_entry_info(it, &info);
         print_value(info.namespace_name, info.key, info.type);
         it = nvs_entry_next(it);
     }
-    nvs_release_iterator(it);
 
 fail:
     printf("== done ==\n");
